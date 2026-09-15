@@ -16,6 +16,8 @@ Assistant actions, latency checks, `Ping All`, and embedded SVG country flags.
 The card never talks to the router API directly and contains no router token
 or other credential.
 
+![Mihomo Control dashboard](assets/mihomo-control-dashboard.png)
+
 Files:
 
 - `www/mihomo-dashboard.js` — the custom Lovelace card;
