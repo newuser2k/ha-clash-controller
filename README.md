@@ -1,12 +1,47 @@
 # Home Assistant Clash Controller
 [![](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![](https://img.shields.io/badge/HACS-Default-yellow.svg)](https://hacs.xyz/)
-[![](https://img.shields.io/badge/maintainer-%40myhades-green)](https://github.com/myhades)
-[![](https://img.shields.io/github/v/release/myhades/ha-clash-controller)](https://github.com/myhades/ha-clash-controller/releases)
+[![Upstream](https://img.shields.io/badge/upstream-ha--clash--controller-blue)](https://github.com/myhades/ha-clash-controller)
 
 ![Repo Logo](https://raw.githubusercontent.com/myhades/ha-clash-controller/main/assets/clash_controller_repo_logo.png)
 
 A Home Assistant integration for controlling an external Clash instance (now [Mihomo](https://github.com/MetaCubeX/mihomo)).
+
+## Mihomo Control dashboard
+
+This fork adds an optional, self-contained Lovelace dashboard for the
+integration. It keeps the integration's existing entities and services, while
+adding a responsive web interface with proxy-group cards, native Home
+Assistant actions, latency checks, `Ping All`, and embedded SVG country flags.
+The card never talks to the router API directly and contains no router token
+or other credential.
+
+Files:
+
+- `www/mihomo-dashboard.js` — the custom Lovelace card;
+- `dashboards/mihomo-dashboard.example.json` — an example card configuration.
+
+### Dashboard installation
+
+1. Install and configure the Clash Controller integration using one of the
+   methods below.
+2. Copy `www/mihomo-dashboard.js` to `/config/www/mihomo-dashboard.js`.
+3. Add this Lovelace resource as a JavaScript module:
+
+   ```yaml
+   url: /local/mihomo-dashboard.js
+   type: module
+   ```
+
+4. Add the card from
+   `dashboards/mihomo-dashboard.example.json` to a dashboard. Replace
+   `YOUR_CLASH_CONTROLLER_DEVICE_ID` and the entity IDs with the values from
+   your Home Assistant instance.
+
+The card uses the integration's `get_latency_service` for `PING` and `Ping
+All`. The DNS and FakeIP buttons call the corresponding Home Assistant button
+entities. All router addresses and device IDs stay in the local dashboard
+configuration; do not commit them to a public repository.
 
 This is not a Clash implementation nor client, but an external controller designed as a Home Assistant integration to automate proxy control. 
 
