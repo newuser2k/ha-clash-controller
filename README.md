@@ -1,11 +1,11 @@
-# Home Assistant Clash Controller
+# Home Assistant Clash Controller — Mihomo Control
 [![](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![](https://img.shields.io/badge/HACS-Default-yellow.svg)](https://hacs.xyz/)
 [![Upstream](https://img.shields.io/badge/upstream-ha--clash--controller-blue)](https://github.com/myhades/ha-clash-controller)
 
 ![Repo Logo](https://raw.githubusercontent.com/myhades/ha-clash-controller/main/assets/clash_controller_repo_logo.png)
 
-A Home Assistant integration for controlling an external Clash instance (now [Mihomo](https://github.com/MetaCubeX/mihomo)).
+A Home Assistant integration for controlling an external Clash instance (now [Mihomo](https://github.com/MetaCubeX/mihomo)) with an optional responsive Lovelace dashboard.
 
 ## Mihomo Control dashboard
 
@@ -43,9 +43,10 @@ All`. The DNS and FakeIP buttons call the corresponding Home Assistant button
 entities. All router addresses and device IDs stay in the local dashboard
 configuration; do not commit them to a public repository.
 
-This is not a Clash implementation nor client, but an external controller designed as a Home Assistant integration to automate proxy control. 
-
-This is my very first Python / Home Assistant project, and I’m still learning. Please expect some instabilities and rough edges. Feedback and contributions are greatly appreciated. If you find this project useful, consider giving it a ⭐star to show your support!
+This is not a Clash implementation or client. It is an external controller
+designed as a Home Assistant integration to automate proxy control. The
+integration backend is preserved from the upstream project; this fork adds the
+Mihomo Control dashboard described above.
 
 ## Compatibility
 
@@ -70,7 +71,7 @@ Choose your preferred installation method, and reboot Home Assistant afterward.
 
 Navigate to "HACS" > "Clash Controller" or use the My button below.
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=myhades&repository=ha-clash-controller&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=newuser2k&repository=ha-clash-controller&category=integration)
 
 ### Method 2: Manually
 
