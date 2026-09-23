@@ -23,6 +23,12 @@ Files:
 - `www/mihomo-dashboard.js` — the custom Lovelace card;
 - `dashboards/mihomo-dashboard.example.json` — an example card configuration.
 
+The card header shows the installed Clash Controller integration version. The
+version comes from the configured primary proxy selector's state attributes; it
+appears after the integration has been updated and loaded by Home Assistant.
+The card asset in `/config/www` is managed separately, so update that file when
+you install a newer dashboard release.
+
 ### Dashboard installation
 
 1. Install and configure the Clash Controller integration using one of the

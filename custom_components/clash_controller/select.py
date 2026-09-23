@@ -60,6 +60,14 @@ class GroupSelect(SelectEntityBase):
     ) -> None:
         super().__init__(coordinator, entity_data)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Expose the installed integration version to frontend cards."""
+        attributes = dict(super().extra_state_attributes or {})
+        if self.coordinator.integration_version is not None:
+            attributes["integration_version"] = self.coordinator.integration_version
+        return attributes
+
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
         # Mihomo proxy-group and proxy names are exact identifiers. Whitespace

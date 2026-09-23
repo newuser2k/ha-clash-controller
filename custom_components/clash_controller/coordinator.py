@@ -14,6 +14,7 @@ from homeassistant.const import CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.loader import async_get_integration
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import ClashAPI, SERVICE_TABLE
@@ -81,6 +82,7 @@ class ClashControllerCoordinator(DataUpdateCoordinator[list[ClashEntityData]]):
         self.streaming_detection = config_entry.options.get(
             CONF_STREAMING_DETECTION, DEFAULT_STREAMING_DETECTION
         )
+        self.integration_version: str | None = None
 
         super().__init__(
             hass,
@@ -148,6 +150,9 @@ class ClashControllerCoordinator(DataUpdateCoordinator[list[ClashEntityData]]):
             )
             if not CORE_DATA_KEYS.intersection(response):
                 raise UpdateFailed("No data returned from Clash core.")
+            if self.integration_version is None:
+                integration = await async_get_integration(self.hass, DOMAIN)
+                self.integration_version = str(integration.version)
             if not self.device:
                 self.device = await self._get_device()
         except Exception as err:
