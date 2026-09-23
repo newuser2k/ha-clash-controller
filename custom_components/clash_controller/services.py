@@ -313,15 +313,17 @@ class ClashServicesSetup:
                 "latency": sorted_items
             }
         
-        group = service_call.data.get(GROUP_NAME, "").strip()
-        node = service_call.data.get(NODE_NAME, "").strip()
-        if bool(group) ^ bool(node) is False:
+        group = service_call.data.get(GROUP_NAME, "")
+        node = service_call.data.get(NODE_NAME, "")
+        has_group = bool(group.strip())
+        has_node = bool(node.strip())
+        if has_group == has_node:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="invalid_latency_target",
             )
 
-        capability = "group_delay" if group else "proxy_delay"
+        capability = "group_delay" if has_group else "proxy_delay"
         self._require_capability(coordinator, capability, "Latency testing")
 
         url = service_call.data.get(TEST_URL, "https://www.gstatic.com/generate_204")
@@ -332,7 +334,7 @@ class ClashServicesSetup:
                 method="GET",
                 endpoint=(
                     f"group/{quote(group, safe='')}/delay"
-                    if group
+                    if has_group
                     else f"proxies/{quote(node, safe='')}/delay"
                 ),
                 params={"url": url,"timeout": timeout},
@@ -340,7 +342,7 @@ class ClashServicesSetup:
         except Exception as err:
             raise self._action_error("latency_failed", err) from err
         
-        if group:
+        if has_group:
             return sort_group(response)
         else:
             return {"latency": {node: response.get("delay", [])}}
