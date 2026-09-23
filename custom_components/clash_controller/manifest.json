@@ -1,13 +1,16 @@
 {
     "domain": "clash_controller",
     "name": "Clash Controller",
-    "codeowners": ["@myhades"],
+    "codeowners": ["@newuser2k"],
     "config_flow": true,
     "dependencies": [],
-    "documentation": "https://github.com/myhades/ha-clash-controller",
+    "documentation": "https://github.com/newuser2k/ha-clash-controller",
     "integration_type": "device",
     "iot_class": "local_polling",
-    "issue_tracker": "https://github.com/myhades/ha-clash-controller/issues",
-    "requirements": ["aiohttp>=3.8.1"],
-    "version": "0.2.3"
+    "issue_tracker": "https://github.com/newuser2k/ha-clash-controller/issues",
+    "loggers": ["clash_controller_api"],
+    "requirements": [
+        "clash-controller-api==0.1.2"
+    ],
+    "version": "0.3.1"
 }
