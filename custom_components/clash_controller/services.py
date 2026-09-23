@@ -340,7 +340,29 @@ class ClashServicesSetup:
                 params={"url": url,"timeout": timeout},
             )
         except Exception as err:
-            raise self._action_error("latency_failed", err) from err
+            if has_group or "status 404" not in str(err):
+                raise self._action_error("latency_failed", err) from err
+            try:
+                catalog = await coordinator.api.async_request("GET", "proxies")
+                groups = [
+                    (name, detail)
+                    for name, detail in catalog.get("proxies", {}).items()
+                    if isinstance(detail, dict) and node in detail.get("all", [])
+                ]
+                if not groups:
+                    raise err
+                group_name, _ = min(groups, key=lambda item: len(item[1]["all"]))
+                self._require_capability(coordinator, "group_delay", "Latency testing")
+                group_response = await coordinator.api.async_request(
+                    method="GET",
+                    endpoint=f"group/{quote(group_name, safe='')}/delay",
+                    params={"url": url, "timeout": timeout},
+                )
+                if node not in group_response:
+                    raise ValueError(f"No delay returned for node {node!r}")
+                response = {"delay": group_response[node]}
+            except Exception as fallback_err:
+                raise self._action_error("latency_failed", fallback_err) from fallback_err
         
         if has_group:
             return sort_group(response)
