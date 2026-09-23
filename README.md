@@ -1,8 +1,9 @@
 # Home Assistant Clash Controller
 
 This fork is based on upstream v0.3.0. Version 0.3.1 preserves whitespace in
-proxy group and node names when selecting a server. The version shown in the
-local Home Assistant dashboard comes from the HACS update entity.
+proxy group and node names when selecting a server. Version 0.3.2 also reads
+the current Mihomo memory sample when the initial stream frame reports zero.
+The local Home Assistant dashboard reads the installed version from HACS.
 
 [![](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![](https://img.shields.io/badge/HACS-Custom-yellow.svg)](https://hacs.xyz/)

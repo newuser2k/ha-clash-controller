@@ -168,6 +168,29 @@ class ClashControllerCoordinator(DataUpdateCoordinator[list[ClashEntityData]]):
         except Exception as err:
             raise UpdateFailed(err) from err
 
+        # Mihomo's memory stream can start with a zero-valued snapshot. The
+        # WebSocket client accepts that first frame, while the second HTTP
+        # line contains the current reading. Keep the normal result if the
+        # extra read fails so other entities continue to update.
+        memory = response.get("memory")
+        if (
+            (self.api.capabilities or {}).get("http_memory")
+            and isinstance(memory, dict)
+            and memory.get("inuse") == 0
+        ):
+            try:
+                current_memory = await self.api.async_request(
+                    "GET", "memory", read_line=2
+                )
+                if (
+                    isinstance(current_memory, dict)
+                    and isinstance(current_memory.get("inuse"), (int, float))
+                    and current_memory["inuse"] > 0
+                ):
+                    response["memory"] = current_memory
+            except Exception as err:  # An optional metric must not block the poll.
+                _LOGGER.debug("Could not refresh initial memory sample: %s", err)
+
         data = self._build_entity_data(response)
         real_entities = [
             item
