@@ -62,8 +62,10 @@ class GroupSelect(SelectEntityBase):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
-        group = self._attr_name.strip()
-        node = option.strip()
+        # Mihomo proxy-group and proxy names are exact identifiers. Whitespace
+        # can be part of a configured name, so do not normalize either value.
+        group = self._attr_name
+        node = option
         try:
             await self.coordinator.api.async_request(
                 "PUT",
