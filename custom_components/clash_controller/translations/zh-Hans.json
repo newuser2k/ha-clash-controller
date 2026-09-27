@@ -179,6 +179,12 @@
         "proxy_group_selection_failed": {
             "message": "无法将策略组 {group} 切换到 {node}：{error}"
         },
+        "invalid_connection_filter": {
+            "message": "每个已填写的连接筛选器至少需要一个关键字。"
+        },
+        "admin_required": {
+            "message": "此操作需要管理员权限。"
+        },
         "empty_mode": {
             "message": "代理模式不能为空。"
         },

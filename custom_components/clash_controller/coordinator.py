@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -21,6 +23,7 @@ from homeassistant.const import CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
@@ -261,15 +264,84 @@ class ClashControllerCoordinator(DataUpdateCoordinator[list[ClashEntityData]]):
         if capabilities.get("cache_dns_flush"):
             entity_data.append(self._build_dns_flush_button())
 
+        id_specs: list[tuple[ClashEntityData, str, str]] = []
         for item in entity_data:
             id_source = (
                 item.unique_key or item.name or item.translation_key or item.entity_type
             )
-            item.unique_id = (
+            legacy_unique_id = (
                 f"{self.device_id}"
                 f"_{item.entity_type}"
                 f"_{id_source.lower().replace(' ', '_')}"
             )
+            exact_source = (
+                item.name
+                or (item.translation_placeholders or {}).get("provider_name")
+            )
+            if not exact_source and item.action:
+                action_args = item.action.get("args", ())
+                if len(action_args) > 1:
+                    exact_source = action_args[1]
+            id_specs.append((item, legacy_unique_id, exact_source or id_source))
+
+        legacy_ids = Counter(unique_id for _, unique_id, _ in id_specs)
+        duplicate_ids = {
+            unique_id for unique_id, count in legacy_ids.items() if count > 1
+        }
+        legacy_owner: dict[str, ClashEntityData] = {}
+        if duplicate_ids:
+            def matches_registered_name(
+                item: ClashEntityData, original_name: str
+            ) -> bool:
+                if (
+                    item.entity_type == "proxy_group_selector"
+                    and item.name == original_name
+                ):
+                    return True
+                provider_name = (item.translation_placeholders or {}).get(
+                    "provider_name"
+                )
+                return bool(
+                    item.entity_type == "provider_healthcheck_button"
+                    and provider_name
+                    and original_name.startswith(f"{provider_name} ")
+                )
+
+            registered_names = {
+                entry.unique_id: entry.original_name_unprefixed or entry.original_name
+                for entry in er.async_entries_for_config_entry(
+                    er.async_get(self.hass), self.config_entry.entry_id
+                )
+                if entry.platform == DOMAIN
+                and entry.unique_id in duplicate_ids
+                and (entry.original_name_unprefixed or entry.original_name)
+            }
+            for unique_id, original_name in registered_names.items():
+                matches = [
+                    item
+                    for item, item_id, _ in id_specs
+                    if item_id == unique_id
+                    and matches_registered_name(item, original_name)
+                ]
+                if len(matches) == 1:
+                    legacy_owner[unique_id] = matches[0]
+
+        used_unique_ids: set[str] = set()
+        for item, legacy_unique_id, exact_source in id_specs:
+            item.unique_id = legacy_unique_id
+            if item.unique_id in used_unique_ids or (
+                legacy_unique_id in legacy_owner
+                and legacy_owner[legacy_unique_id] is not item
+            ):
+                # Keep an existing entity's historical ID where possible and
+                # disambiguate colliding names with a stable exact-name suffix.
+                suffix = hashlib.sha256(exact_source.encode("utf-8")).hexdigest()
+                item.unique_id = f"{legacy_unique_id}_{suffix[:12]}"
+                counter = 2
+                while item.unique_id in used_unique_ids:
+                    item.unique_id = f"{legacy_unique_id}_{suffix}_{counter}"
+                    counter += 1
+            used_unique_ids.add(item.unique_id)
 
         self._data_by_name = {}
         for item in entity_data:

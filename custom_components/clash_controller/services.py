@@ -16,6 +16,7 @@ from homeassistant.core import (
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import (
     API_CALL_SERVICE_NAME,
@@ -110,6 +111,12 @@ class ClashServicesSetup:
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
+        self._group_delay_tasks: dict[
+            tuple[str, str, str, int], asyncio.Task
+        ] = {}
+        self._group_delay_cache: dict[
+            tuple[str, str, str, int], tuple[float, dict]
+        ] = {}
         self.setup_services()
 
     def setup_services(self) -> None:
@@ -120,8 +127,19 @@ class ClashServicesSetup:
             handler,
             schema: vol.Schema,
             supports_response: SupportsResponse | None = None,
+            admin_only: bool = False,
         ) -> None:
             if self.hass.services.has_service(DOMAIN, service_name):
+                return
+            if admin_only:
+                async_register_admin_service(
+                    self.hass,
+                    DOMAIN,
+                    service_name,
+                    handler,
+                    schema,
+                    supports_response=supports_response or SupportsResponse.NONE,
+                )
                 return
             kwargs = {"schema": schema}
             if supports_response is not None:
@@ -137,6 +155,7 @@ class ClashServicesSetup:
             REBOOT_CORE_SERVICE_NAME,
             self.async_reboot_core_service,
             REBOOT_CORE_SERVICE_SCHEMA,
+            admin_only=True,
         )
         _register(
             FILTER_CONNECTION_SERVICE_NAME,
@@ -167,6 +186,19 @@ class ClashServicesSetup:
             self.async_api_call_service,
             API_CALL_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    async def _require_admin_context(self, service_call: ServiceCall) -> None:
+        """Require an administrator for service calls that can change the core."""
+        user_id = service_call.context.user_id
+        if user_id is None:
+            return
+        user = await self.hass.auth.async_get_user(user_id)
+        if user is not None and user.is_admin:
+            return
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="admin_required",
         )
 
     def _get_coordinator(self, device_id: str) -> ClashControllerCoordinator:
@@ -230,14 +262,24 @@ class ClashServicesSetup:
         """Execute service call for filtering connection."""
 
         coordinator = self._get_coordinator(service_call.data[CONF_DEVICE_ID])
+        close_connection = service_call.data.get(CLOSE_CONNECTION, False)
+        if close_connection:
+            await self._require_admin_context(service_call)
 
         def parse_filter(key):
-            value_str = service_call.data.get(key)
-            return (
-                {item.strip().lower() for item in value_str.split(",") if item.strip()}
-                if value_str
-                else None
-            )
+            if key not in service_call.data:
+                return None
+            values = {
+                item.strip().lower()
+                for item in service_call.data[key].split(",")
+                if item.strip()
+            }
+            if not values:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="invalid_connection_filter",
+                )
+            return values
 
         def filter_connection(conn):
             meta = conn.get("metadata", {})
@@ -262,8 +304,6 @@ class ClashServicesSetup:
         hosts = parse_filter(HOST_KEYWORD)
         src_hosts = parse_filter(SRC_HOSTNAME_KEYWORD)
         des_hosts = parse_filter(DES_HOSTNAME_KEYWORD)
-        close_connection = service_call.data.get(CLOSE_CONNECTION, False)
-
         try:
             response = await coordinator.api.async_request("GET", "connections")
         except Exception as err:
@@ -343,20 +383,29 @@ class ClashServicesSetup:
             if has_group or "status 404" not in str(err):
                 raise self._action_error("latency_failed", err) from err
             try:
-                catalog = await coordinator.api.async_request("GET", "proxies")
                 groups = [
-                    (name, detail)
-                    for name, detail in catalog.get("proxies", {}).items()
-                    if isinstance(detail, dict) and node in detail.get("all", [])
+                    (item.name, {"all": item.options or []})
+                    for item in getattr(coordinator, "data", []) or []
+                    if item.entity_type == "proxy_group_selector"
+                    and item.name
+                    and node in (item.options or [])
                 ]
+                if not groups:
+                    catalog = await coordinator.api.async_request("GET", "proxies")
+                    groups = [
+                        (name, detail)
+                        for name, detail in catalog.get("proxies", {}).items()
+                        if isinstance(detail, dict) and node in detail.get("all", [])
+                    ]
                 if not groups:
                     raise err
                 group_name, _ = min(groups, key=lambda item: len(item[1]["all"]))
                 self._require_capability(coordinator, "group_delay", "Latency testing")
-                group_response = await coordinator.api.async_request(
-                    method="GET",
-                    endpoint=f"group/{quote(group_name, safe='')}/delay",
-                    params={"url": url, "timeout": timeout},
+                group_response = await self._async_shared_group_delay(
+                    coordinator,
+                    group_name,
+                    url,
+                    timeout,
                 )
                 if node not in group_response:
                     raise ValueError(f"No delay returned for node {node!r}")
@@ -368,6 +417,54 @@ class ClashServicesSetup:
             return sort_group(response)
         else:
             return {"latency": {node: response.get("delay", [])}}
+
+    async def _async_shared_group_delay(
+        self,
+        coordinator: ClashControllerCoordinator,
+        group: str,
+        url: str,
+        timeout: int,
+    ) -> dict:
+        """Share an in-flight group probe between node latency requests."""
+        entry_id = coordinator.config_entry.entry_id
+        key = (entry_id, group, url, timeout)
+        loop_time = asyncio.get_running_loop().time()
+        cached = self._group_delay_cache.get(key)
+        if cached is not None and cached[0] > loop_time:
+            return cached[1]
+        self._group_delay_cache.pop(key, None)
+
+        task = self._group_delay_tasks.get(key)
+        if task is None:
+            task = asyncio.create_task(
+                coordinator.api.async_request(
+                    method="GET",
+                    endpoint=f"group/{quote(group, safe='')}/delay",
+                    params={"url": url, "timeout": timeout},
+                )
+            )
+            self._group_delay_tasks[key] = task
+
+            def remove_completed(completed: asyncio.Task) -> None:
+                if self._group_delay_tasks.get(key) is completed:
+                    self._group_delay_tasks.pop(key, None)
+                if not completed.cancelled():
+                    completed.exception()
+
+            task.add_done_callback(remove_completed)
+        response = await asyncio.shield(task)
+        cache_time = asyncio.get_running_loop().time()
+        for cache_key, (expires_at, _) in list(self._group_delay_cache.items()):
+            if expires_at <= cache_time:
+                self._group_delay_cache.pop(cache_key, None)
+        if len(self._group_delay_cache) >= 128:
+            oldest_key = min(
+                self._group_delay_cache,
+                key=lambda cache_key: self._group_delay_cache[cache_key][0],
+            )
+            self._group_delay_cache.pop(oldest_key, None)
+        self._group_delay_cache[key] = (cache_time + 1.0, response)
+        return response
 
     async def async_dns_query_service(
         self, service_call: ServiceCall
@@ -457,6 +554,8 @@ class ClashServicesSetup:
             )
 
         method = service_call.data.get(API_METHOD, "GET")
+        if method.upper() != "GET":
+            await self._require_admin_context(service_call)
         endpoint = service_call.data.get(API_ENDPOINT, "")
         read_line = service_call.data.get(API_READ_LINE, 0)
         params = to_dict(service_call.data.get(API_PARAMS, "") or "", "api_params")

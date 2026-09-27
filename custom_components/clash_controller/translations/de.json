@@ -179,6 +179,12 @@
         "proxy_group_selection_failed": {
             "message": "Proxygruppe {group} konnte nicht auf {node} umgestellt werden: {error}"
         },
+        "invalid_connection_filter": {
+            "message": "Jeder angegebene Verbindungsfilter muss mindestens ein Stichwort enthalten."
+        },
+        "admin_required": {
+            "message": "Für diese Aktion sind Administratorrechte erforderlich."
+        },
         "empty_mode": {
             "message": "Der Proxy-Modus darf nicht leer sein."
         },

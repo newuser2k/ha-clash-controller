@@ -312,3 +312,31 @@ async def test_checker_failure_is_isolated_and_cancellation_propagates(caplog):
     with pytest.raises(asyncio.CancelledError):
         await detector.async_fetch_data({"dazn"})
     assert len([record for record in caplog.records if record.exc_info]) == 3
+
+
+async def test_netflix_login_page_is_not_reported_as_full_catalog():
+    detector = StreamingDetector(
+        MagicMock(spec=aiohttp.ClientSession),
+        parse_streaming_proxy("proxy.local:7890"),
+    )
+    detector._async_request = AsyncMock(
+        side_effect=(
+            StreamingResponse(
+                200,
+                0.1,
+                "https://www.netflix.com/login",
+                "<html><body>Sign in</body></html>",
+            ),
+            StreamingResponse(
+                200,
+                0.1,
+                "https://www.netflix.com/login",
+                "<html><body>Sign in</body></html>",
+            ),
+        )
+    )
+
+    result = await detector._async_check_netflix()
+
+    assert result["state"] == "unknown"
+    assert result["reason"] == "login_required"

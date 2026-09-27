@@ -10,6 +10,7 @@ import time
 from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import aiohttp
@@ -281,6 +282,8 @@ class StreamingDetector:
                 return self._result(response, STATE_BLOCKED)
             if response.status_code != 200 or not response.body.strip():
                 return self._result(response, STATE_UNKNOWN)
+            if urlsplit(response.url).path.rstrip("/").lower().endswith("/login"):
+                return self._result(response, STATE_UNKNOWN, reason="login_required")
 
         response = responses[0]
         attributes: dict[str, Any] = {
@@ -294,8 +297,9 @@ class StreamingDetector:
             r'"id"\s*:\s*"([A-Za-z]{2})"\s*,\s*"countryName"\s*:',
             response.body,
         )
-        if region_match:
-            attributes["region"] = region_match.group(1).upper()
+        if region_match is None:
+            return self._result(response, STATE_UNKNOWN, reason="catalog_unverified")
+        attributes["region"] = region_match.group(1).upper()
         return self._result(
             response, STATE_AVAILABLE, access_level="full_catalog", **attributes
         )

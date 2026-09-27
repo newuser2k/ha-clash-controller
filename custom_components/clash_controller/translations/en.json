@@ -179,6 +179,12 @@
         "proxy_group_selection_failed": {
             "message": "Failed to set proxy group {group} to {node}: {error}"
         },
+        "invalid_connection_filter": {
+            "message": "Each supplied connection filter must contain at least one keyword."
+        },
+        "admin_required": {
+            "message": "This action requires an administrator."
+        },
         "empty_mode": {
             "message": "The proxy mode cannot be empty."
         },

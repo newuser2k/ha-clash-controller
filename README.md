@@ -6,7 +6,10 @@ the current Mihomo memory sample when the initial stream frame reports zero.
 Version 0.3.3 also preserves exact proxy names in latency checks. Version
 0.3.4 falls back to the containing group's delay endpoint when Mihomo does
 not expose a provider node through its direct proxy endpoint. The local Home
-Assistant dashboard reads the installed version from HACS.
+Assistant dashboard reads the installed version from HACS. Version 0.3.5 adds
+permission checks for mutating services, collision-safe entity identities,
+safer connection filters, HTTPS preservation, shared latency probes and more
+conservative streaming status checks.
 
 [![](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![](https://img.shields.io/badge/HACS-Custom-yellow.svg)](https://hacs.xyz/)

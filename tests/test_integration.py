@@ -21,6 +21,7 @@ from clash_controller_api import (
 )
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.core import Context, ServiceCall
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
@@ -32,9 +33,11 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.clash_controller.const import DOMAIN
+from custom_components.clash_controller.config_flow import ClashControllerConfigFlow
 from custom_components.clash_controller.diagnostics import (
     async_get_config_entry_diagnostics,
 )
+from custom_components.clash_controller.services import ClashServicesSetup
 from custom_components.clash_controller.streaming import (
     StreamingProxyAuthError,
     StreamingProxyConnectionError,
@@ -48,6 +51,18 @@ INPUT = {
     "allow_unsafe": False,
     "use_ssl": False,
 }
+
+
+@pytest.mark.parametrize(
+    ("api_url", "use_ssl", "expected"),
+    [
+        ("https://proxy.example:9090", False, "https://proxy.example:9090/"),
+        ("http://proxy.example:9090", True, "https://proxy.example:9090/"),
+        ("proxy.example:9090", True, "https://proxy.example:9090/"),
+    ],
+)
+def test_config_flow_preserves_explicit_https(api_url, use_ssl, expected):
+    assert ClashControllerConfigFlow._normalize_url(None, api_url, use_ssl) == expected
 PAYLOAD = {
     "traffic": {"up": 1048576, "down": 0},
     "connections": {"uploadTotal": 1073741824, "downloadTotal": 0, "connections": []},
@@ -862,6 +877,267 @@ async def test_service_validation(hass, backend, service, data, key):
         )
     assert error.value.translation_key == key
     api.async_request.assert_not_awaited()
+
+
+async def test_mutating_api_service_requires_admin_but_get_remains_available(
+    hass, backend, hass_read_only_user, hass_admin_user
+):
+    """Raw mutating proxy API actions must require an HA administrator."""
+    entry = await load_entry(hass, backend)
+    device = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)[0]
+    api = backend[1][HOST]
+    service_data = {
+        "device_id": device.id,
+        "api_method": "PATCH",
+        "api_endpoint": "configs",
+        "api_data": '{"mode":"direct"}',
+    }
+
+    with pytest.raises(ServiceValidationError) as error:
+        await hass.services.async_call(
+            DOMAIN,
+            "api_call_service",
+            service_data,
+            context=Context(user_id=hass_read_only_user.id),
+            blocking=True,
+        )
+    assert error.value.translation_key == "admin_required"
+    api.async_request.assert_not_awaited()
+
+    await hass.services.async_call(
+        DOMAIN,
+        "api_call_service",
+        {**service_data, "api_method": "GET", "api_data": ""},
+        context=Context(user_id=hass_read_only_user.id),
+        blocking=True,
+    )
+    api.async_request.assert_awaited_once_with(
+        method="GET",
+        endpoint="configs",
+        params={},
+        json_data={},
+        read_line=0,
+    )
+    api.async_request.reset_mock()
+
+    await hass.services.async_call(
+        DOMAIN,
+        "api_call_service",
+        service_data,
+        context=Context(user_id=hass_admin_user.id),
+        blocking=True,
+    )
+    api.async_request.assert_awaited_once_with(
+        method="PATCH",
+        endpoint="configs",
+        params={},
+        json_data={"mode": "direct"},
+        read_line=0,
+    )
+
+
+async def test_empty_supplied_connection_filter_is_rejected(hass, backend):
+    entry = await load_entry(hass, backend)
+    device = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)[0]
+    api = backend[1][HOST]
+
+    with pytest.raises(ServiceValidationError) as error:
+        await hass.services.async_call(
+            DOMAIN,
+            "filter_connection_service",
+            {"device_id": device.id, "host": " , ", "close_connection": True},
+            blocking=True,
+        )
+
+    assert error.value.translation_key == "invalid_connection_filter"
+    api.async_request.assert_not_awaited()
+
+
+async def test_read_only_user_can_query_but_cannot_close_connections(
+    hass, backend, hass_read_only_user
+):
+    entry = await load_entry(hass, backend)
+    device = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)[0]
+    api = backend[1][HOST]
+    api.async_request.return_value = {
+        "connections": [
+            {"id": "one", "metadata": {"host": "example.org"}}
+        ]
+    }
+    context = Context(user_id=hass_read_only_user.id)
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "filter_connection_service",
+        {"device_id": device.id, "host": "example.org"},
+        context=context,
+        blocking=True,
+        return_response=True,
+    )
+    assert response["connection_number"] == 1
+    api.async_request.assert_awaited_once_with("GET", "connections")
+
+    api.async_request.reset_mock()
+    with pytest.raises(ServiceValidationError) as error:
+        await hass.services.async_call(
+            DOMAIN,
+            "filter_connection_service",
+            {
+                "device_id": device.id,
+                "host": "example.org",
+                "close_connection": True,
+            },
+            context=context,
+            blocking=True,
+        )
+    assert error.value.translation_key == "admin_required"
+    api.async_request.assert_not_awaited()
+
+
+async def test_colliding_group_names_get_distinct_selectors(hass, backend):
+    """Groups whose old normalized IDs matched remain independently controllable."""
+    api = backend[0](HOST, "audit")
+    api.payload["proxies"] = {
+        "proxies": {
+            name: {
+                "name": name,
+                "type": "Selector",
+                "now": state,
+                "all": ["DIRECT", "REJECT"],
+            }
+            for name, state in (("AI EU", "DIRECT"), ("AI_EU", "REJECT"))
+        }
+    }
+    entry = await load_entry(hass, backend)
+    selectors = [
+        entity
+        for entity in er.async_entries_for_config_entry(
+            er.async_get(hass), entry.entry_id
+        )
+        if "proxy_group_selector" in entity.unique_id
+    ]
+
+    assert len(selectors) == 2
+    assert selectors[0].unique_id != selectors[1].unique_id
+    legacy_selector = next(
+        entity
+        for entity in selectors
+        if entity.unique_id.endswith("_proxy_group_selector_ai_eu")
+    )
+    legacy_entity_id = legacy_selector.entity_id
+    api.payload["proxies"]["proxies"] = dict(
+        reversed(list(api.payload["proxies"]["proxies"].items()))
+    )
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(legacy_entity_id).state == "DIRECT"
+
+    by_state = {
+        hass.states.get(entity.entity_id).state: entity.entity_id for entity in selectors
+    }
+    assert set(by_state) == {"DIRECT", "REJECT"}
+
+    api.async_request.reset_mock()
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": by_state["REJECT"], "option": "DIRECT"},
+        blocking=True,
+    )
+
+    api.async_request.assert_awaited_once_with(
+        "PUT", "proxies/AI_EU", json_data={"name": "DIRECT"}
+    )
+
+
+async def test_parallel_node_latency_requests_share_group_probe(hass, backend):
+    entry = await load_entry(hass, backend)
+    coordinator = entry.runtime_data.coordinator
+    api = backend[1][HOST]
+    assert any(
+        item.entity_type == "proxy_group_selector"
+        and "DIRECT" in (item.options or [])
+        for item in coordinator.data
+    )
+
+    async def request(method, endpoint, **kwargs):
+        if endpoint.startswith("proxies/") and endpoint.endswith("/delay"):
+            raise APIClientError("HTTP request failed with status 404")
+        if endpoint == "group/A%2FB%20%E4%B8%AD%E6%96%87/delay":
+            await asyncio.sleep(0)
+            return {"DIRECT": 20, "REJECT": 30}
+        raise AssertionError(f"Unexpected API request: {method} {endpoint}")
+
+    api.async_request = AsyncMock(side_effect=request)
+    service = object.__new__(ClashServicesSetup)
+    service._group_delay_tasks = {}
+    service._group_delay_cache = {}
+    service._get_coordinator = lambda _: coordinator
+    calls = [
+        ServiceCall(
+            hass,
+            DOMAIN,
+            "get_latency_service",
+            {"device_id": coordinator.device_registry_id, "node": node},
+        )
+        for node in ("DIRECT", "REJECT")
+    ]
+
+    results = await asyncio.gather(
+        *(service.async_get_latency_service(call) for call in calls)
+    )
+
+    assert results == [
+        {"latency": {"DIRECT": 20}},
+        {"latency": {"REJECT": 30}},
+    ]
+    assert sum(
+        call.kwargs.get("endpoint") == "group/A%2FB%20%E4%B8%AD%E6%96%87/delay"
+        for call in api.async_request.await_args_list
+    ) == 1
+
+
+async def test_colliding_provider_names_get_distinct_buttons(hass, backend):
+    api = backend[0](HOST, "audit")
+    api.capabilities["providers_proxies"] = True
+    api.capabilities["provider_healthcheck"] = True
+    api.payload["providers_proxies"] = {
+        "providers": {"US-1": {}, "US_1": {}}
+    }
+    entry = await load_entry(hass, backend)
+    registry = er.async_get(hass)
+    buttons = [
+        entity
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
+        if "provider_healthcheck_us_1" in entity.unique_id
+    ]
+
+    assert len(buttons) == 2
+    assert buttons[0].unique_id != buttons[1].unique_id
+    legacy_button = next(
+        entity for entity in buttons if entity.unique_id.endswith("_us_1")
+    )
+    button_actions = {
+        item.unique_id: item.action["args"][1]
+        for item in entry.runtime_data.coordinator.data
+        if item.entity_type == "provider_healthcheck_button"
+    }
+    assert set(button_actions.values()) == {
+        "providers/proxies/US-1/healthcheck",
+        "providers/proxies/US_1/healthcheck",
+    }
+
+    api.payload["providers_proxies"]["providers"] = dict(
+        reversed(list(api.payload["providers_proxies"]["providers"].items()))
+    )
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert {
+        item.unique_id: item.action["args"][1]
+        for item in entry.runtime_data.coordinator.data
+        if item.entity_type == "provider_healthcheck_button"
+    } == button_actions
+    assert legacy_button.unique_id in button_actions
 
 
 async def test_select_and_button_writes(hass, backend):

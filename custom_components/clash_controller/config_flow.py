@@ -102,8 +102,6 @@ class ClashControllerConfigFlow(ConfigFlow, domain=DOMAIN):
         if api_url.startswith("http://") or api_url.startswith("https://"):
             if use_ssl and api_url.startswith("http://"):
                 api_url = api_url.replace("http://", "https://", 1)
-            elif not use_ssl and api_url.startswith("https://"):
-                api_url = api_url.replace("https://", "http://", 1)
         else:
             api_url = f"https://{api_url}" if use_ssl else f"http://{api_url}"
         if not api_url.endswith("/"):
