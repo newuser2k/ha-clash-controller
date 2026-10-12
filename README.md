@@ -10,6 +10,8 @@ Assistant dashboard reads the installed version from HACS. Version 0.3.5 adds
 permission checks for mutating services, collision-safe entity identities,
 safer connection filters, HTTPS preservation, shared latency probes and more
 conservative streaming status checks.
+Version 0.3.6 publishes the companion card v17 without changing the Python
+integration behavior.
 
 [![](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![](https://img.shields.io/badge/HACS-Custom-yellow.svg)](https://hacs.xyz/)
@@ -22,7 +24,7 @@ A Home Assistant integration for controlling an external Clash instance (now [Mi
 
 For a Lovelace control panel with server/website diagnostics, see the optional
 [Mihomo Control card v17](dashboard/README.md). The standalone card has its own
-installation and update procedure; the Python integration remains at 0.3.5.
+installation and update procedure; the Python integration is at 0.3.6.
 
 This is not a Clash implementation nor client, but an external controller designed as a Home Assistant integration to automate proxy control.
 

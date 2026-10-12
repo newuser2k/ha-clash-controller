@@ -22,7 +22,7 @@ All instance-specific settings belong in the Lovelace configuration.
 This card is versioned independently of the Python integration. Installing or
 updating the HACS integration alone does **not** copy this card into `/config/www`.
 The version badge in the card displays the integration version; it is not the
-JavaScript card version. Python integration 0.3.5 remains compatible with v17.
+JavaScript card version. Python integration 0.3.5 and 0.3.6 are compatible with v17.
 
 ## Configuration
 
