@@ -20,6 +20,10 @@ conservative streaming status checks.
 
 A Home Assistant integration for controlling an external Clash instance (now [Mihomo](https://github.com/MetaCubeX/mihomo)).
 
+For a Lovelace control panel with server/website diagnostics, see the optional
+[Mihomo Control card v17](dashboard/README.md). The standalone card has its own
+installation and update procedure; the Python integration remains at 0.3.5.
+
 This is not a Clash implementation nor client, but an external controller designed as a Home Assistant integration to automate proxy control.
 
 This is my very first Python / Home Assistant project, and I’m still learning. Please expect some instabilities and rough edges. Feedback and contributions are greatly appreciated. If you find this project useful, consider giving it a ⭐star to show your support!

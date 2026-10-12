@@ -1,0 +1,19 @@
+type: custom:mihomo-dashboard
+device_id: REPLACE_WITH_CLASH_CONTROLLER_DEVICE_ID
+primary: select.clash_instance_select
+primary_group: Select
+mode: select.clash_instance_proxy_mode
+global: select.clash_instance_global
+update_entity: update.clash_controller_update
+ping_url: http://www.gstatic.com/generate_204
+ping_timeout: 5000
+# Optional: set the URL of your full router dashboard.
+router_url: ""
+groups:
+  - [youtube, YouTube, "▶", YouTube]
+  - [telegram, Telegram, "➤", Telegram]
+  - [whatsapp, WhatsApp, "◉", WhatsApp]
+  - [ai, AI, "✦", AI]
+  - [figma, Figma, "◈", Figma]
+  - [tiktok, TikTok, "♪", TikTok]
+  - [games, Games, "⌘", Games]

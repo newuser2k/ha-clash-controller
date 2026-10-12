@@ -1,0 +1,12 @@
+{
+  "name": "mihomo-dashboard",
+  "version": "17.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "check": "node --check clash-dashboard.js",
+    "test": "node tests/dashboard.test.mjs"
+  },
+  "devDependencies": { "happy-dom": "20.14.5" }
+}
