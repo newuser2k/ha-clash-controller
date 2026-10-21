@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from custom_components.clash_controller.const import AUTO_SELECT_OPTION
 from custom_components.clash_controller.coordinator import ClashControllerCoordinator
 
 
@@ -20,7 +21,52 @@ def test_urltest_entity_type(fixed):
     assert entities[0].entity_type == (
         "proxy_group_selector" if fixed else "proxy_group_sensor"
     )
-    assert entities[0].options == (["a", "b"] if fixed else None)
+    assert entities[0].options == (
+        [AUTO_SELECT_OPTION, "a", "b"] if fixed else None
+    )
+
+
+@pytest.mark.parametrize(
+    ("fixed", "expected_options", "expected_fixed"),
+    [
+        ("", [AUTO_SELECT_OPTION, "a", "b"], False),
+        ("b", [AUTO_SELECT_OPTION, "a", "b"], True),
+        (None, ["a", "b"], None),
+    ],
+)
+def test_fallback_offers_unpin_and_reports_pin(fixed, expected_options, expected_fixed):
+    group = {"name": "Fallback", "type": "Fallback", "now": "a", "all": ["a", "b"]}
+    if fixed is not None:
+        group["fixed"] = fixed
+    (entity,) = ClashControllerCoordinator._build_proxy_entities(
+        {"proxies": {"fallback": group}}
+    )
+    assert entity.entity_type == "proxy_group_selector"
+    assert entity.state == "a"
+    assert entity.options == expected_options
+    assert entity.attributes.get("fixed") is expected_fixed
+    if fixed is not None:
+        assert entity.attributes["pinned_node"] == (fixed or None)
+
+
+def test_hidden_groups_are_disabled_by_default():
+    proxies = {
+        "shown": {"name": "Shown", "type": "Selector", "now": "a", "all": ["a"]},
+        "hidden": {
+            "name": "Hidden",
+            "type": "Fallback",
+            "now": "a",
+            "all": ["a"],
+            "fixed": "",
+            "hidden": True,
+        },
+    }
+    entities = {
+        item.name: item
+        for item in ClashControllerCoordinator._build_proxy_entities({"proxies": proxies})
+    }
+    assert entities["Shown"].enabled_default is None
+    assert entities["Hidden"].enabled_default is False
 
 
 @pytest.mark.parametrize("healthcheck", [True, False])

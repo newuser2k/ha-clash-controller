@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ClashControllerConfigEntry
 from .base import BaseEntity
-from .const import DOMAIN
+from .const import AUTO_SELECT_OPTION, DOMAIN
 from .coordinator import ClashControllerCoordinator, ClashEntityData
 
 PARALLEL_UPDATES = 0
@@ -76,12 +76,22 @@ class GroupSelect(SelectEntityBase):
         # Proxy group and node names are exact Mihomo identifiers.
         group = self._attr_name
         node = option
+        unpin = option == AUTO_SELECT_OPTION and "fixed" in (
+            self.entity_data.attributes or {}
+        )
         try:
-            await self.coordinator.api.async_request(
-                "PUT",
-                f"proxies/{quote(group, safe='')}",
-                json_data={"name": node},
-            )
+            if unpin:
+                # Clearing "fixed" hands node choice back to the group's health checks.
+                await self.coordinator.api.async_request(
+                    "DELETE",
+                    f"proxies/{quote(group, safe='')}",
+                )
+            else:
+                await self.coordinator.api.async_request(
+                    "PUT",
+                    f"proxies/{quote(group, safe='')}",
+                    json_data={"name": node},
+                )
         except Exception as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
@@ -92,7 +102,17 @@ class GroupSelect(SelectEntityBase):
                     "node": node,
                 },
             ) from err
+        if unpin:
+            # The core picks the node itself; read it back instead of guessing.
+            await self.coordinator.async_request_refresh()
+            return
         self.entity_data.state = option
+        if "fixed" in (self.entity_data.attributes or {}):
+            self.entity_data.attributes = {
+                **self.entity_data.attributes,
+                "fixed": True,
+                "pinned_node": option,
+            }
         self.async_write_ha_state()
 
 class CoreModeSelect(SelectEntityBase):

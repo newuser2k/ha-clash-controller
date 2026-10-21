@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.7
+
+- Fix Fallback groups silently losing automatic switching: selecting a node pins it in
+  Mihomo (`fixed`), and there was no way to undo that from Home Assistant. Fallback and
+  pinnable URLTest selectors now offer `↺ Auto`, which clears the pin, and expose
+  `fixed`/`pinned_node` attributes.
+- Create proxy groups marked `hidden: true` in the core config as disabled entities.
+  Already registered entities keep their current enabled state.
+
 ## 0.3.6
 
 - Publish the companion Mihomo Control card v17 with corrected diagnostic status,

@@ -32,7 +32,7 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.clash_controller.const import DOMAIN
+from custom_components.clash_controller.const import AUTO_SELECT_OPTION, DOMAIN
 from custom_components.clash_controller.config_flow import ClashControllerConfigFlow
 from custom_components.clash_controller.diagnostics import (
     async_get_config_entry_diagnostics,
@@ -1173,6 +1173,62 @@ async def test_select_and_button_writes(hass, backend):
         blocking=True,
     )
     api.async_request.assert_awaited_once_with("POST", "cache/fakeip/flush")
+
+
+async def test_fallback_pin_and_unpin(hass, backend):
+    factory, instances = backend
+    api = factory(HOST, INPUT["bearer_token"])
+    api.payload["proxies"]["proxies"]["Auto Fallback"] = {
+        "name": "Auto Fallback",
+        "type": "Fallback",
+        "now": "DIRECT",
+        "all": ["DIRECT", "REJECT"],
+        "fixed": "",
+    }
+    api.payload["proxies"]["proxies"]["Hidden Fallback"] = {
+        "name": "Hidden Fallback",
+        "type": "Fallback",
+        "now": "DIRECT",
+        "all": ["DIRECT"],
+        "fixed": "",
+        "hidden": True,
+    }
+    entry = await load_entry(hass, backend)
+    selector = entity_id(hass, entry, "_auto_fallback")
+    state = hass.states.get(selector)
+    assert state.attributes["options"] == [AUTO_SELECT_OPTION, "DIRECT", "REJECT"]
+    assert state.attributes["fixed"] is False
+    hidden = er.async_get(hass).async_get(entity_id(hass, entry, "_hidden_fallback"))
+    assert hidden.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": selector, "option": "REJECT"},
+        blocking=True,
+    )
+    api.async_request.assert_awaited_once_with(
+        "PUT", "proxies/Auto%20Fallback", json_data={"name": "REJECT"}
+    )
+    state = hass.states.get(selector)
+    assert state.state == "REJECT"
+    assert state.attributes["fixed"] is True
+    assert state.attributes["pinned_node"] == "REJECT"
+
+    api.async_request.reset_mock()
+    api.async_fetch_data.reset_mock()
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": selector, "option": AUTO_SELECT_OPTION},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    api.async_request.assert_awaited_once_with("DELETE", "proxies/Auto%20Fallback")
+    api.async_fetch_data.assert_awaited()
+    state = hass.states.get(selector)
+    assert state.state == "DIRECT"
+    assert state.attributes["fixed"] is False
 
 
 @pytest.mark.parametrize(
