@@ -30,6 +30,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    AUTO_SELECT_OPTION,
     CONF_CONCURRENT_CONNECTIONS,
     DEFAULT_CONCURRENT_CONNECTIONS,
     DEFAULT_SCAN_INTERVAL,
@@ -466,7 +467,10 @@ class ClashControllerCoordinator(DataUpdateCoordinator[list[ClashEntityData]]):
         ]
 
         for item in proxies.get("proxies", {}).values():
-            if item.get("type") in ["Selector", "Fallback"]:
+            group_type = item.get("type")
+            # Mihomo marks groups that its config hides from dashboards.
+            enabled_default = False if item.get("hidden") is True else None
+            if group_type == "Selector":
                 entity_data.append(
                     ClashEntityData(
                         name=item.get("name", ""),
@@ -474,28 +478,44 @@ class ClashControllerCoordinator(DataUpdateCoordinator[list[ClashEntityData]]):
                         entity_type="proxy_group_selector",
                         icon="mdi:network-outline",
                         options=item.get("all"),
+                        enabled_default=enabled_default,
                         attributes={
                             k: item[k] for k in group_selector_items if k in item
                         },
                     )
                 )
-            elif item.get("type") == "URLTest":
-                fixed_value = item.get("fixed")
+            elif group_type in ("Fallback", "URLTest"):
+                # Choosing a node pins it ("fixed") and stops automatic
+                # switching, so these groups also offer an option to unpin.
                 supports_fixed = "fixed" in item
-                attributes = {k: item[k] for k in urltest_items if k in item}
+                items = urltest_items if group_type == "URLTest" else group_sensor_items
+                attributes = {k: item[k] for k in items if k in item}
                 if supports_fixed:
-                    attributes["fixed"] = bool(fixed_value)
+                    attributes["fixed"] = bool(item.get("fixed"))
+                    attributes["pinned_node"] = item.get("fixed") or None
+                elif group_type == "Fallback":
+                    # Older cores expose Fallback without "fixed"; keep it selectable.
+                    attributes = {
+                        k: item[k] for k in group_selector_items if k in item
+                    }
+                selectable = supports_fixed or group_type == "Fallback"
+                options = None
+                if selectable:
+                    options = list(item.get("all") or [])
+                    if supports_fixed:
+                        options = [AUTO_SELECT_OPTION, *options]
                 entity_data.append(
                     ClashEntityData(
                         name=item.get("name", ""),
                         state=item.get("now"),
                         entity_type=(
                             "proxy_group_selector"
-                            if supports_fixed
+                            if selectable
                             else "proxy_group_sensor"
                         ),
                         icon="mdi:network-outline",
-                        options=item.get("all") if supports_fixed else None,
+                        options=options,
+                        enabled_default=enabled_default,
                         attributes=attributes,
                     )
                 )

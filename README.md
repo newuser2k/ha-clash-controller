@@ -87,6 +87,9 @@ Core capability is automatically detected at entry load, and unsupported entitie
 ### 1. Entities
 
 - Proxy group and mode selectors
+  - Fallback and URLTest groups: choosing a node pins it (`fixed`) and stops automatic switching.
+    The `↺ Auto` option clears the pin; the `fixed` and `pinned_node` attributes show the current pin.
+  - Groups marked `hidden: true` in the core config are created disabled.
 - Traffic, connection and memory sensors
 - Provider counters and health-check buttons
 - DNS and FakeIP cache flush buttons

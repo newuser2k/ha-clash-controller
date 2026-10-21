@@ -9,6 +9,10 @@ CONF_BEAR_TOKEN = "bearer_token"
 CONF_USE_SSL = "use_ssl"
 CONF_ALLOW_UNSAFE = "allow_unsafe"
 
+# Select option that clears a pinned Fallback/URLTest node (DELETE /proxies/{group}).
+# The arrow keeps it distinct from real Mihomo proxy names.
+AUTO_SELECT_OPTION = "↺ Auto"
+
 # Options
 
 MIN_SCAN_INTERVAL = 10
